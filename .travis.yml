@@ -1,0 +1,18 @@
+language: go
+
+go:
+  - 1.5.4
+  - 1.6.3
+  - 1.7
+
+env:
+  - TARGET=amd64
+  - TARGET=arm64
+
+install:
+  -
+
+script:
+        # Install go with CGO_ENABLED=0
+        #eval "$(GIMME_ARCH=${TARGET} GIMME_CGO_ENABLED=0 ./gimme.local ${TRAVIS_GO_VERSION})";
+        ./test
