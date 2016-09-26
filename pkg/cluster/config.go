@@ -33,6 +33,14 @@ const (
 	DefaultUsePGRewind             = false
 )
 
+// NilConfig is the cluster configuration with all the values as pointer. Having
+// all the value as pointers is needed to know if, after json unmarshalling, the
+// field wasn't provided. Not using a pointer will be impossible to know if a
+// field having the go default value was provided or not.
+// This is needed for different things:
+// * Save in the cluster view only the user changed values. So if a default
+// value is changed in future stolon versions it'll be automatically reflected.
+// * Patching config
 type NilConfig struct {
 	RequestTimeout          *Duration          `json:"request_timeout,omitempty"`
 	SleepInterval           *Duration          `json:"sleep_interval,omitempty"`
@@ -44,6 +52,8 @@ type NilConfig struct {
 	PGParameters            *map[string]string `json:"pg_parameters,omitempty"`
 }
 
+// Config is the cluster configuration taken from a NilConfig and populated with
+// all the defaults
 type Config struct {
 	// Time after which any request (keepers checks from sentinel etc...) will fail.
 	RequestTimeout time.Duration
@@ -64,22 +74,32 @@ type Config struct {
 	PGParameters map[string]string
 }
 
+// StringP is a helper function that returns the address of a copy of the
+// provided string (since the argument is passed by value).
 func StringP(s string) *string {
 	return &s
 }
 
+// UintP is a helper function that returns the address of a copy of the
+// provided uint (since the argument is passed by value).
 func UintP(u uint) *uint {
 	return &u
 }
 
+// BoolP is a helper function that returns the address of a copy of the
+// provided bool (since the argument is passed by value).
 func BoolP(b bool) *bool {
 	return &b
 }
 
+// DurationP is a helper function that returns the address of a copy of the
+// provided Duration (since the argument is passed by value).
 func DurationP(d Duration) *Duration {
 	return &d
 }
 
+// MapStringP is a helper function that returns the address of a copy of the
+// provided map[string]string.
 func MapStringP(m map[string]string) *map[string]string {
 	nm := map[string]string{}
 	for k, v := range m {
@@ -88,9 +108,12 @@ func MapStringP(m map[string]string) *map[string]string {
 	return &nm
 }
 
-type nilConfig NilConfig
-
+// UnmarshalJSON implements the encoding/json.Unmarshaler interface. After
+// unmarshalling it also validates the NilConfig.
 func (c *NilConfig) UnmarshalJSON(in []byte) error {
+	// nilConfig is needed to avoid recursive infinite calls to
+	// NilConfig.UnmarshalJSON
+	type nilConfig NilConfig
 	var nc nilConfig
 	if err := json.Unmarshal(in, &nc); err != nil {
 		return err
@@ -102,6 +125,7 @@ func (c *NilConfig) UnmarshalJSON(in []byte) error {
 	return nil
 }
 
+// Copy returns a deep copy
 func (c *NilConfig) Copy() *NilConfig {
 	if c == nil {
 		return c
@@ -134,6 +158,7 @@ func (c *NilConfig) Copy() *NilConfig {
 	return &nc
 }
 
+// Copy returns a deep copy
 func (c *Config) Copy() *Config {
 	if c == nil {
 		return c
@@ -148,10 +173,14 @@ type Duration struct {
 	time.Duration
 }
 
+// MarshalJSON marshals the Duration in time units (eg. 3s, 100ms).
+// Implements the encoding/json.Marshaler interface.
 func (d Duration) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.String())
 }
 
+// UnmarshalJSON unmarshals the Duration in time units (eg. 3s,
+// 100ms). Implements the encoding/json.Unmarshaler interface.
 func (d *Duration) UnmarshalJSON(b []byte) error {
 	s := strings.Trim(string(b), `"`)
 	du, err := time.ParseDuration(s)
@@ -162,6 +191,7 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// Validate validates a NilConfig
 func (c *NilConfig) Validate() error {
 	if c.RequestTimeout != nil && (*c.RequestTimeout).Duration < 0 {
 		return fmt.Errorf("request_timeout must be positive")
@@ -178,6 +208,7 @@ func (c *NilConfig) Validate() error {
 	return nil
 }
 
+// MergeDefaults merges the default values
 func (c *NilConfig) MergeDefaults() {
 	if c.RequestTimeout == nil {
 		c.RequestTimeout = &Duration{DefaultRequestTimeout}
@@ -205,6 +236,8 @@ func (c *NilConfig) MergeDefaults() {
 	}
 }
 
+// ToConfig returns a *Config from a *NilConfig (it'll be populated with all the
+// default values
 func (c *NilConfig) ToConfig() *Config {
 	nc := c.Copy()
 	nc.MergeDefaults()
@@ -220,6 +253,7 @@ func (c *NilConfig) ToConfig() *Config {
 	}
 }
 
+// NewDefaultConfig returns a *Config populated with all the default values.
 func NewDefaultConfig() *Config {
 	nc := &NilConfig{}
 	nc.MergeDefaults()
