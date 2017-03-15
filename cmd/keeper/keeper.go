@@ -450,7 +450,7 @@ func (p *PostgresKeeper) updatePGState(pctx context.Context) {
 // Versions only than 9.6 only support the second format.
 //
 // This function extracts the `[node1,node2]` part for both cases.
-func parse_synchronous_standby_names(s string) ([]string, error) {
+func parseSynchronousStandbyNames(s string) ([]string, error) {
 	var spacesSplit []string = strings.Split(s, " ")
 	var entries []string
 	if len(spacesSplit) < 2 {
@@ -464,7 +464,7 @@ func parse_synchronous_standby_names(s string) ([]string, error) {
 			rest := strings.Join(spacesSplit[1:], " ")
 			inBrackets := strings.TrimSpace(rest)
 			if !strings.HasPrefix(inBrackets, "(") || !strings.HasSuffix(inBrackets, ")") {
-				return nil, fmt.Errorf("parse_synchronous_standby_names format has number but lacks brackets")
+				return nil, fmt.Errorf("synchronous standby string has number but lacks brackets")
 			}
 			withoutBrackets := strings.TrimRight(strings.TrimLeft(inBrackets, "("), ")")
 			entries = strings.Split(withoutBrackets, ",")
@@ -513,7 +513,7 @@ func (p *PostgresKeeper) GetPGState(pctx context.Context) (*cluster.PostgresStat
 		log.Debug("filtered out managed pg parameters", zap.Object("filteredPGParameters", filteredPGParameters))
 		pgState.PGParameters = filteredPGParameters
 
-		synchronousStandbyNames, err := parse_synchronous_standby_names(pgParameters["synchronous_standby_names"])
+		synchronousStandbyNames, err := parseSynchronousStandbyNames(pgParameters["synchronous_standby_names"])
 		if err != nil {
 			log.Error("error parsing synchronous_standby_names", zap.Error(err))
 			return pgState, nil
