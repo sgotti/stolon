@@ -1083,3 +1083,84 @@ func TestLoweredMaxStandbysPerSender(t *testing.T) {
 		t.Fatalf("expected 2 DBs in cluster data: %v", err)
 	}
 }
+
+func TestKeeperRemoval(t *testing.T) {
+	dir, err := ioutil.TempDir("", "stolon")
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	clusterName := uuid.NewV4().String()
+
+	initialClusterSpec := &cluster.ClusterSpec{
+		InitMode:                  cluster.ClusterInitModeP(cluster.ClusterInitModeNew),
+		SleepInterval:             &cluster.Duration{Duration: 2 * time.Second},
+		FailInterval:              &cluster.Duration{Duration: 5 * time.Second},
+		ConvergenceTimeout:        &cluster.Duration{Duration: 30 * time.Second},
+		DeadKeeperRemovalInterval: &cluster.Duration{Duration: 10 * time.Second},
+		PGParameters:              make(cluster.PGParameters),
+	}
+
+	// Create 3 keepers
+	tks, tss, tstore := setupServersCustom(t, clusterName, dir, 2, 1, initialClusterSpec)
+	defer shutdown(tks, tss, tstore)
+
+	storePath := filepath.Join(common.StoreBasePath, clusterName)
+	sm := store.NewStoreManager(tstore.store, storePath)
+
+	master, standbys := waitMasterStandbysReady(t, sm, tks)
+	standby := standbys[0]
+
+	if err := populate(t, master); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if err := write(t, master, 1, 1); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+
+	// wait for the keepers to have reported their state (needed to know the instance XLogPos)
+	time.Sleep(5 * time.Second)
+
+	// Stop the keeper process on standby
+	t.Logf("Stopping standby keeper: %s", standby.uid)
+	standby.Stop()
+
+	// wait for keeper to be removed from the cluster data
+	if err := WaitClusterDataKeepers([]string{master.uid}, sm, 30*time.Second); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+
+	// Stop the keeper process on master
+	t.Logf("Stopping master keeper: %s", master.uid)
+	master.Stop()
+
+	// wait for a time greater than DeadKeeperRemovalInterval
+	time.Sleep(20 * time.Second)
+	// the master keeper shouldn't be removed from the cluster data
+	if err := WaitClusterDataKeepers([]string{master.uid}, sm, 30*time.Second); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+
+	// restart the standby and master.
+	t.Logf("Starting master keeper: %s", master.uid)
+	master.Start()
+	t.Logf("Starting standby keeper: %s", standby.uid)
+	standby.Start()
+
+	waitKeeperReady(t, sm, master)
+	// add a new line to be sure
+	if err := write(t, master, 2, 2); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+
+	// the standby should be readded to the cluster and a new db assigned and
+	// then synced to the master db
+	waitKeeperReady(t, sm, standby)
+	if err := waitLines(t, standby, 2, 60*time.Second); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if err := standby.WaitRole(common.RoleStandby, 30*time.Second); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+}
