@@ -16,6 +16,8 @@
 #
 set -e
 
+env
+
 BASEDIR=$(readlink -f $(dirname $0))
 BINDIR=${BASEDIR}/bin
 

@@ -1,15 +1,25 @@
+sudo: true
+
 language: go
 
 go:
   - 1.8.x
   - 1.9.x
 
+# make build of forked repos work on travis (the forked repo contents will be
+# copied inside the right path)
+go_import_path: github.com/sorintlab/sircles
+
 env:
-  - TARGET=amd64
-  - TARGET=arm64
+  - POSTGRESQL_VERSION=9.5 STOLON_TEST_STORE_BACKEND=etcd
+  - POSTGRESQL_VERSION=9.5 STOLON_TEST_STORE_BACKEND=consul
+  - POSTGRESQL_VERSION=9.6 STOLON_TEST_STORE_BACKEND=etcd
+  - POSTGRESQL_VERSION=9.6 STOLON_TEST_STORE_BACKEND=consul
+  - POSTGRESQL_VERSION=10  STOLON_TEST_STORE_BACKEND=etcd
+  - POSTGRESQL_VERSION=10  STOLON_TEST_STORE_BACKEND=consul
 
 install:
-  -
+  - ./scripts/travis_install.sh
 
 script:
-  ./test
+  - INTEGRATION=1 PARALLEL=20 ETCD_BIN="${PWD}/etcd/etcd-v3.1.8-linux-amd64/etcd" CONSUL_BIN="${PWD}/consul/consul" PATH=/usr/lib/postgresql/${POSTGRESQL_VERSION}/bin/:$PATH ./test
