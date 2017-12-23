@@ -44,6 +44,7 @@ sudo /bin/sh -c 'echo "32000 1024000000 500 32000" > /proc/sys/kernel/sem'
 
 # Free up some disk space
 rm -rf ~/.rbenv
+rm -rf ~/.phpbrew
 
 export INTEGRATION=1
 export PARALLEL=20
