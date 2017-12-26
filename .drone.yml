@@ -6,4 +6,4 @@ pipeline:
   test:
     image: stolon-test-image
     commands:
-      - INTEGRATION=1 PARALLEL=4 ETCD_BIN="/usr/bin/etcd" CONSUL_BIN="/usr/bin/consul" ./test
+      - STOLON_TEST_STORE_BACKEND=etcd INTEGRATION=1 PARALLEL=4 ETCD_BIN="/usr/bin/etcd" CONSUL_BIN="/usr/bin/consul" ./test
