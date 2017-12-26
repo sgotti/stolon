@@ -1,8 +1,4 @@
 pipeline:
-  build:
-    image: golang
-    commands:
-      - ./build
   test:
     image: stolon-test-image
     commands:
