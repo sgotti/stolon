@@ -3,9 +3,7 @@ pipeline:
     image: golang
     commands:
       - ./build
-      - ./test
   test:
     image: stolon-test-image
     commands:
-      - ./scripts/drone_install.sh
       - INTEGRATION=1 PARALLEL=4 ETCD_BIN="/usr/bin/etcd" CONSUL_BIN="/usr/bin/consul" ./test
