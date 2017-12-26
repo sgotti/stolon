@@ -5,7 +5,7 @@ pipeline:
       - ./build
       - ./test
   test:
-    image: postgres
+    image: stolon-test-image
     commands:
       - ./scripts/drone_install.sh
-      - INTEGRATION=1 PARALLEL=4 ETCD_BIN="${PWD}/etcd/etcd-v3.1.8-linux-amd64/etcd" CONSUL_BIN="${PWD}/consul/consul" ./test
+      - INTEGRATION=1 PARALLEL=4 ETCD_BIN="/usr/bin/etcd" CONSUL_BIN="/usr/bin/consul" ./test
