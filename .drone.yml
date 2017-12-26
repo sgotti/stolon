@@ -9,4 +9,3 @@ pipeline:
     commands:
       - ./scripts/drone_install.sh
       - INTEGRATION=1 PARALLEL=4 ETCD_BIN="${PWD}/etcd/etcd-v3.1.8-linux-amd64/etcd" CONSUL_BIN="${PWD}/consul/consul" ./test
-
