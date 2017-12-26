@@ -1,0 +1,6 @@
+pipeline:
+  backend:
+    image: golang
+    commands:
+      - ./build
+      - ./test
