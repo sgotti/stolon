@@ -2,5 +2,6 @@ pipeline:
   test:
     image: stolon-test-image
     commands:
+      - ./build
       - chown -R stolon:stolon .
       - su stolon -c 'STOLON_TEST_STORE_BACKEND=etcd INTEGRATION=1 PARALLEL=4 ETCD_BIN="/usr/bin/etcd" CONSUL_BIN="/usr/bin/consul" ./test'
