@@ -24,6 +24,8 @@ import (
 
 	"github.com/sorintlab/stolon/common"
 
+	"regexp"
+
 	"github.com/mitchellh/copystructure"
 )
 
@@ -222,9 +224,14 @@ type ClusterSpec struct {
 	// MaxSynchronousStandbys is the maximum number if synchronous standbys
 	// to be configured when SynchronousReplication is true
 	MaxSynchronousStandbys *uint16 `json:"maxSynchronousStandbys,omitempty"`
+
 	// AdditionalWalSenders defines the number of additional wal_senders in
 	// addition to the ones internally defined by stolon
 	AdditionalWalSenders *uint16 `json:"additionalWalSenders"`
+
+	ExternalFallbackSyncStandbys   []string `json:"externalFallbackSyncStandbys"`
+	AdditionalReplicationSlotNames []string `json:"additionalReplicationSlotNames"`
+
 	// Whether to use pg_rewind
 	UsePgrewind *bool `json:"usePgrewind,omitempty"`
 	// InitMode defines the cluster initialization mode. Current modes are: new, existing, pitr
@@ -397,6 +404,45 @@ func (os *ClusterSpec) Validate() error {
 	if s.InitMode == nil {
 		return fmt.Errorf("initMode undefined")
 	}
+
+	symbolsNameFilter := regexp.MustCompile("[_0-9]")
+	if len(s.ExternalFallbackSyncStandbys) > 0 {
+		correctSymbolsNameFilter := regexp.MustCompile("[_0-9A-Za-z]")
+		for _, standbyName := range s.ExternalFallbackSyncStandbys {
+			if trimmedStandbyName := strings.TrimSpace(standbyName); len(trimmedStandbyName) == 0 ||
+				len(correctSymbolsNameFilter.ReplaceAllString(trimmedStandbyName, "")) > 0 ||
+				strings.Contains(standbyName, "\n") ||
+				len(trimmedStandbyName) != len(standbyName) {
+				return fmt.Errorf("External fallback synchronous standby name \"%s\" has an incorrect format, it may only contain letters, numbers, and the underscore character", standbyName)
+			}
+			if filteredSymbolsOnlyName := symbolsNameFilter.ReplaceAllString(standbyName, ""); len(filteredSymbolsOnlyName) == 0 {
+				return fmt.Errorf("External fallback synchronous standby name \"%s\" has an incorrect format, every name should start with a symbol", standbyName)
+			}
+
+			if common.IsStolonName(standbyName) {
+				return fmt.Errorf("External fallback synchronous standby name \"%s\" has an incorrect format, it should not have prefix 'stolon_'", standbyName)
+			}
+			if strings.Contains(standbyName, "\n") {
+
+			}
+		}
+	}
+
+	if len(s.AdditionalReplicationSlotNames) > 0 {
+		rp := regexp.MustCompile("[_0-9a-z]+")
+		for _, replSlotName := range s.AdditionalReplicationSlotNames {
+			if trimmedSlotName := strings.TrimSpace(replSlotName); len(trimmedSlotName) == 0 ||
+				len(rp.ReplaceAllString(trimmedSlotName, "")) > 0 ||
+				strings.Contains(replSlotName, "\n") ||
+				len(trimmedSlotName) != len(replSlotName) {
+				return fmt.Errorf("Replication slot names may only contain lower case letters, numbers, and the underscore character")
+			}
+			if filteredSymbolsOnlyName := symbolsNameFilter.ReplaceAllString(replSlotName, ""); len(filteredSymbolsOnlyName) == 0 {
+				return fmt.Errorf("Replication slot \"<%s>\" has an incorrect format, every name should start with a symbol", replSlotName)
+			}
+		}
+	}
+
 	// The unique validation we're doing on pgHBA entries is that they don't contain a newline character
 	for _, e := range s.PGHBA {
 		if strings.Contains(e, "\n") {
@@ -530,6 +576,8 @@ type DBSpec struct {
 	// AdditionalWalSenders defines the number of additional wal_senders in
 	// addition to the ones internally defined by stolon
 	AdditionalWalSenders uint16 `json:"additionalWalSenders"`
+
+	AdditionalReplicationSlotNames []string `json:"additionalReplicationSlotNames"`
 	// InitMode defines the db initialization mode. Current modes are: none, new
 	InitMode DBInitMode `json:"initMode,omitempty"`
 	// Init configuration used when InitMode is "new"
@@ -549,8 +597,10 @@ type DBSpec struct {
 	Followers []string `json:"followers"`
 	// Whether to include previous postgresql.conf
 	IncludeConfig bool `json:"includePreviousConfig,omitempty"`
-	// SynchronousStandbys are the standbys to be configured as synchronous
+	// SynchronousStandbys are the internal db UIDs to be configured as synchronous
 	SynchronousStandbys []string `json:"synchronousStandbys"`
+	// External SynchronousStandbys are external standbys names to be configured as synchronous
+	ExternalSynchronousStandbys []string `json:"externalSynchronousStandbys"`
 }
 
 type DBStatus struct {
@@ -566,9 +616,14 @@ type DBStatus struct {
 	XLogPos          uint64                   `json:"xLogPos,omitempty"`
 	TimelinesHistory PostgresTimelinesHistory `json:"timelinesHistory,omitempty"`
 
-	PGParameters        PGParameters `json:"pgParameters,omitempty"`
-	SynchronousStandbys []string     `json:"synchronousStandbys"`
-	OlderWalFile        string       `json:"olderWalFile,omitempty"`
+	PGParameters PGParameters `json:"pgParameters,omitempty"`
+
+	// DBUIDs of the internal standbys set as synchronous
+	SynchronousStandbys []string `json:"synchronousStandbys"`
+	// NOTE(sgotti) we currently don't report the external synchronous stanbys.
+	// If/when needed add a new ExternalSynchronousStandbys field
+
+	OlderWalFile string `json:"olderWalFile,omitempty"`
 }
 
 type DB struct {

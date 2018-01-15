@@ -358,6 +358,7 @@ func (s *Sentinel) setDBSpecFromClusterSpec(cd *cluster.ClusterData) {
 			db.Spec.FollowConfig.StandbySettings = clusterSpec.StandbySettings
 		}
 		db.Spec.AdditionalWalSenders = *clusterSpec.AdditionalWalSenders
+		db.Spec.AdditionalReplicationSlotNames = clusterSpec.AdditionalReplicationSlotNames
 	}
 }
 
@@ -1018,6 +1019,7 @@ func (s *Sentinel) updateCluster(cd *cluster.ClusterData, pis cluster.ProxiesInf
 			if s.syncRepl(clusterSpec) {
 				for _, dbUID := range oldMasterdb.Spec.SynchronousStandbys {
 					newMasterDB.Spec.SynchronousStandbys = []string{}
+					newMasterDB.Spec.ExternalSynchronousStandbys = []string{}
 					if dbUID != newMasterDB.UID {
 						newMasterDB.Spec.SynchronousStandbys = append(newMasterDB.Spec.SynchronousStandbys, dbUID)
 					} else {
@@ -1025,7 +1027,7 @@ func (s *Sentinel) updateCluster(cd *cluster.ClusterData, pis cluster.ProxiesInf
 					}
 				}
 				if len(newMasterDB.Spec.SynchronousStandbys) == 0 {
-					newMasterDB.Spec.SynchronousStandbys = []string{fakeStandbyName}
+					newMasterDB.Spec.ExternalSynchronousStandbys = []string{fakeStandbyName}
 				}
 			}
 		}
@@ -1137,11 +1139,10 @@ func (s *Sentinel) updateCluster(cd *cluster.ClusterData, pis cluster.ProxiesInf
 				if s.syncRepl(clusterSpec) {
 					// make a map of synchronous standbys starting from the current ones
 					synchronousStandbys := map[string]struct{}{}
+					externalSynchronousStandbys := []string{}
+					addFakeStandby := false
+
 					for _, dbUID := range masterDB.Spec.SynchronousStandbys {
-						// filter out fake standby
-						if dbUID == fakeStandbyName {
-							continue
-						}
 						synchronousStandbys[dbUID] = struct{}{}
 					}
 
@@ -1191,10 +1192,22 @@ func (s *Sentinel) updateCluster(cd *cluster.ClusterData, pis cluster.ProxiesInf
 						addedCount++
 					}
 
-					// If there're not enough real synchronous standbys add a fake synchronous standby because we have to be strict and make the master block transactions until MaxSynchronousStandbys real standbys are available
+					// If there're not enough real synchronous standbys add some external fallback synchronousStandbys until MinSynchronousStandbys
 					if len(synchronousStandbys) < int(*clusterSpec.MinSynchronousStandbys) {
+						c := len(synchronousStandbys)
+						for _, es := range clusterSpec.ExternalFallbackSyncStandbys {
+							externalSynchronousStandbys = append(externalSynchronousStandbys, es)
+							c++
+							if c == int(*clusterSpec.MinSynchronousStandbys) {
+								break
+							}
+						}
+					}
+
+					// If there're not enough real synchronous standbys add a fake synchronous standby because we have to be strict and make the master block transactions until MinSynchronousStandbys real standbys are available
+					if len(synchronousStandbys)+len(externalSynchronousStandbys) < int(*clusterSpec.MinSynchronousStandbys) {
 						log.Infow("using a fake synchronous standby since there are not enough real standbys available", "masterDB", masterDB.UID, "required", int(*clusterSpec.MinSynchronousStandbys))
-						synchronousStandbys[fakeStandbyName] = struct{}{}
+						addFakeStandby = true
 					}
 
 					masterDB.Spec.SynchronousStandbys = []string{}
@@ -1202,8 +1215,18 @@ func (s *Sentinel) updateCluster(cd *cluster.ClusterData, pis cluster.ProxiesInf
 						masterDB.Spec.SynchronousStandbys = append(masterDB.Spec.SynchronousStandbys, dbUID)
 					}
 
+					masterDB.Spec.ExternalSynchronousStandbys = []string{}
+					for _, standbyName := range externalSynchronousStandbys {
+						masterDB.Spec.ExternalSynchronousStandbys = append(masterDB.Spec.ExternalSynchronousStandbys, standbyName)
+					}
+
+					if addFakeStandby {
+						masterDB.Spec.ExternalSynchronousStandbys = append(masterDB.Spec.ExternalSynchronousStandbys, fakeStandbyName)
+					}
+
 					// Sort synchronousStandbys so we can compare the slice regardless of its order
 					sort.Sort(sort.StringSlice(masterDB.Spec.SynchronousStandbys))
+					sort.Sort(sort.StringSlice(masterDB.Spec.ExternalSynchronousStandbys))
 				}
 
 				// NotFailed != Good since there can be some dbs that are converging

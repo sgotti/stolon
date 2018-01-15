@@ -276,6 +276,9 @@ func (p *PostgresKeeper) createPGParameters(db *cluster.DB) common.Parameters {
 		for _, synchronousStandby := range db.Spec.SynchronousStandbys {
 			synchronousStandbys = append(synchronousStandbys, common.StolonName(synchronousStandby))
 		}
+		for _, synchronousStandby := range db.Spec.ExternalSynchronousStandbys {
+			synchronousStandbys = append(synchronousStandbys, synchronousStandby)
+		}
 		// TODO(sgotti) Find a way to detect the pg major version also
 		// when the instance is empty. Parsing the postgres --version
 		// is not always reliable (for example we can get `10devel` for
@@ -592,6 +595,7 @@ func (p *PostgresKeeper) GetPGState(pctx context.Context) (*cluster.PostgresStat
 		}
 		synchronousStandbys := []string{}
 		for _, n := range synchronousStandbyNames {
+			// pgState.SynchronousStandbys must contain only the internal standbys dbUIDs
 			if !common.IsStolonName(n) {
 				continue
 			}
@@ -802,6 +806,81 @@ func (p *PostgresKeeper) isDifferentTimelineBranch(followedDB *cluster.DB, pgSta
 		}
 	}
 	return false
+}
+
+func (p *PostgresKeeper) recreateAddonReplicationSlots(addonSlotNames []string) error {
+	var existingReplicationSlots []string
+	existingReplicationSlots, err := p.pgm.GetReplicationSlots()
+
+	if err != nil {
+		log.Errorw("failed to get replication slots", zap.Error(err))
+		return err
+	}
+
+	// detect not stolon replication slots
+	notStolonSlots := []string{}
+	for _, currReplicationSlotName := range existingReplicationSlots {
+		if !common.IsStolonName(currReplicationSlotName) {
+			notStolonSlots = append(notStolonSlots, currReplicationSlotName)
+		}
+	}
+
+	// detect slot that should be dropped
+	slotsToDrop := []string{}
+
+	for _, removeCandidateSlot := range notStolonSlots {
+		slotShouldSurvive := false
+		for _, replSlotName := range addonSlotNames {
+			if replSlotName == removeCandidateSlot {
+				slotShouldSurvive = true
+			}
+		}
+
+		if !slotShouldSurvive { // slot not detected as additional, so schedule the removal
+			slotsToDrop = append(slotsToDrop, removeCandidateSlot)
+		}
+	}
+
+	// detect slots that should be created
+	slotsToCreate := []string{}
+
+	for _, addReplicationSlotName := range addonSlotNames {
+		slotExists := false
+
+		for _, currReplicationSlotName := range notStolonSlots {
+			if addReplicationSlotName == currReplicationSlotName {
+				slotExists = true
+				break
+			}
+		}
+		if !slotExists {
+			slotsToCreate = append(slotsToCreate, strings.TrimSpace(addReplicationSlotName))
+		}
+	}
+
+	// drop unnecessary slots
+	if len(slotsToDrop) > 0 {
+		for _, dropSlotName := range slotsToDrop {
+			log.Infow("Drop slot", "dropSlotName", dropSlotName)
+			if err = p.pgm.DropReplicationSlot(dropSlotName); err != nil {
+				log.Errorw("Failed to drop replication slot", "slotName", dropSlotName, zap.Error(err))
+				return err
+			}
+		}
+	}
+
+	// create required slots
+	if len(slotsToCreate) > 0 {
+		for _, createSlotName := range slotsToCreate {
+			log.Infow("Create slot", "createSlotName", createSlotName)
+			if err = p.pgm.CreateReplicationSlot(createSlotName); err != nil {
+				log.Errorw("Failed to create replication slot", "slotName", createSlotName, zap.Error(err))
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func (p *PostgresKeeper) updateReplSlots(dbLocalState *DBLocalState, followersUIDs []string) error {
@@ -1376,6 +1455,11 @@ func (p *PostgresKeeper) postgresKeeperSM(pctx context.Context) {
 
 		if err = p.updateReplSlots(dbls, followersUIDs); err != nil {
 			log.Errorw("error updating replication slots", zap.Error(err))
+			return
+		}
+
+		if err = p.recreateAddonReplicationSlots(db.Spec.AdditionalReplicationSlotNames); err != nil {
+			log.Errorw("error updating additional replication slots", zap.Error(err))
 			return
 		}
 
