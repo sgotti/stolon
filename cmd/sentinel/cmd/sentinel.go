@@ -99,6 +99,7 @@ func (s *Sentinel) electionLoop(ctx context.Context) {
 				if err != nil {
 					log.Errorw("election loop error", zap.Error(err))
 				}
+				s.election.Stop()
 				goto end
 			case <-ctx.Done():
 				log.Debugw("stopping election loop")
