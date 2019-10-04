@@ -23,13 +23,14 @@ curl -L https://releases.hashicorp.com/consul/1.0.6/consul_1.0.6_linux_amd64.zip
 unzip consul_1.0.6_linux_amd64.zip
 popd
 
-# Install postgreSQL 9.5, 9.6, 10 and 11
+# Install postgreSQL 9.5, 9.6, 10, 11 and 12
 # TODO(sgotti) remove this when semaphoreci images will have this already installed
 sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main 10" > /etc/apt/sources.list.d/pgdg.list'
 sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main 11" > /etc/apt/sources.list.d/pgdg.list'
+sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main 12" > /etc/apt/sources.list.d/pgdg.list'
 wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
 sudo apt-get update
-sudo apt-get -y install postgresql-9.5 postgresql-9.6 postgresql-10 postgresql-11 eatmydata
+sudo apt-get -y install postgresql-9.5 postgresql-9.6 postgresql-10 postgresql-11 postgresql-12 eatmydata
 
 # Fix build to work with the right import path also when building github forked repositories
 if [[ ! -e ~/workspace/src/github.com/sorintlab/stolon ]]; then
@@ -76,3 +77,7 @@ export PATH=/usr/lib/postgresql/10/bin/:$OLDPATH ; ./test
 # Test with postgresql 11
 echo "===== Testing with postgreSQL 11 ====="
 export PATH=/usr/lib/postgresql/11/bin/:$OLDPATH ; ./test
+
+# Test with postgresql 11
+echo "===== Testing with postgreSQL 12 ====="
+export PATH=/usr/lib/postgresql/12/bin/:$OLDPATH ; ./test
