@@ -36,7 +36,7 @@ echo "Running tests..."
 COVER=${COVER:-"-cover"}
 
 # Use only of specific go version to run gofmt since it'll break when some formatting rules change between versions
-GOFMT_VERSION="go1.14"
+GOFMT_VERSION="go1.15"
 
 MAJOR_GOVERSION=$( echo -n $(go version) | grep -o 'go1\.[0-9]*' || true )
 if [ "${MAJOR_GOVERSION}" == "${GOFMT_VERSION}" ]; then
